@@ -1,7 +1,7 @@
 {
   "name": "session-handoff-button",
-  "version": "0.1.0",
-  "description": "A Session Hand-off button above the prompt, colored by context usage: one press writes the handoff, copies it, runs /clear and sends it to the fresh session.",
+  "version": "0.2.0",
+  "description": "A Session Hand-off button above the prompt, colored by context usage; reads Context clean and cannot be pressed while green. From orange on, one press writes the handoff, copies it, runs /clear and sends it to the fresh session.",
   "author": { "name": "gclbck" },
   "license": "MIT",
   "types": "./types/index.d.ts",

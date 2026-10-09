@@ -11,6 +11,7 @@ const phase = atom({ plugin: 'session-handoff-button', key: 'phase' } as const, 
 export const GREEN = '#22c55e'
 export const ORANGE = '#f97316'
 export const RED = '#ef4444'
+export const CLEAN_LABEL = 'Context clean'
 
 // Sent only when the configured skill is not installed, so the mod also works for people without it.
 export const FALLBACK_PROMPT = [
@@ -118,12 +119,17 @@ export const register: Register = (on, options) => {
     const value = await read($, percent)
     const current = await read($, phase)
     const beneath = await next(e)
+    const chip = <Text color={value === null ? 'inactive' : colorFor(value)} bold>● {value === null ? '–' : `${value}%`}</Text>
+    // Button has no disabled prop, so a clean context draws plain text: nothing to press, no hotkey.
+    const clean = current.step === 'idle' && value !== null && colorFor(value) === GREEN
     return (
       <Box flexDirection="column">
         <Box flexDirection="row">
-          <Button key="session-handoff" hotkey="h" onPress={press => { void startHandoff($, press.surface, config) }}>
-            <Text color={value === null ? 'inactive' : colorFor(value)} bold>● {value === null ? '–' : `${value}%`}</Text> {labelFor(current.step)}
-          </Button>
+          {clean
+            ? <Text>{chip} <Text dimColor>{CLEAN_LABEL}</Text></Text>
+            : <Button key="session-handoff" hotkey="h" onPress={press => { void startHandoff($, press.surface, config) }}>
+                {chip} {labelFor(current.step)}
+              </Button>}
         </Box>
         {beneath}
       </Box>

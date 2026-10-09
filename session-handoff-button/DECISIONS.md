@@ -10,6 +10,7 @@
 - The handoff is sent with `asUser: true`, because the manual workflow pastes it as the person's own words. Rejected: the framed plugin message, because the new session should treat it as the person's instruction to continue. `autoSend: false` is the opt-out for anyone who wants to read it first.
 - The handoff is copied to the clipboard before `/clear` as a recovery copy. Rejected: `$.store`, because the clipboard is where the manual workflow already keeps it, and a store key would outlive the session.
 - Colors are fixed bands at the person's thresholds (under 45, 45–64, 65 and up), not interpolated, because the thresholds were stated as ranges. Hex values, not theme keys, because the request named green, orange and red and the theme's `warning` may be yellow.
+- A green context draws the chip and `Context clean` as plain `Text` instead of the Button, so there is nothing to click and the `h` hotkey is gone. Rejected: a disabled Button, because `ButtonProps` has no disabled prop in 2.1.295; keeping the Button and ignoring the press, because it would still look pressable. While a handoff is running the Button stays, whatever the color, so its progress label stays visible. An unknown percent (`–`) keeps the Button.
 - `phase` is reset to idle on `session.start`, so a reload mid-handoff cannot leave the button stuck in "Writing handoff…".
 
 ## Assumptions not verified

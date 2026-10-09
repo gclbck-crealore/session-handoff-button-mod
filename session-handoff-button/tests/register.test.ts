@@ -1,6 +1,6 @@
 import { describe, expect, mock, test } from 'claude-code/testing'
 import type { CommandInfo, On, SessionMeasureInput, TurnCompleteInput } from 'claude-code'
-import { FALLBACK_PROMPT, GREEN, ORANGE, RED, colorFor } from '../hooks/register.tsx'
+import { CLEAN_LABEL, FALLBACK_PROMPT, GREEN, ORANGE, RED, colorFor } from '../hooks/register.tsx'
 
 const PLUGIN = 'session-handoff-button'
 const BAND = {
@@ -60,6 +60,32 @@ describe('band', () => {
       await band.unmount()
     }
   })
+})
+
+describe('clean context', () => {
+  test('green draws "Context clean" with no button to press', async ($, on) => {
+    stubEngine(on, [skillCommand])
+    await $.session.measure(measure(30))
+    const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
+    expect((await band.find({ type: 'Text', text: /^● 30%$/ }))?.props.color).toBe(GREEN)
+    expect(await band.find({ type: 'Text', text: CLEAN_LABEL })).toBeDefined()
+    expect(await band.find({ type: 'Button', key: 'session-handoff' })).toBeUndefined()
+    expect(await band.find({ text: /Session Hand-off/ })).toBeUndefined()
+  })
+
+  for (const value of [52, 80]) {
+    test(`${value}% draws the Session Hand-off button and a press starts the handoff`, async ($, on) => {
+      const clock = mock.clock(on)
+      const calls = stubEngine(on, [skillCommand])
+      await $.session.measure(measure(value))
+      const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
+      expect((await band.find({ type: 'Button', key: 'session-handoff' }))?.text).toMatch(/Session Hand-off$/)
+      expect(await band.find({ type: 'Text', text: CLEAN_LABEL })).toBeUndefined()
+      await band.press({ key: 'session-handoff' })
+      await clock.settle()
+      expect(calls.commands).toEqual(['session-handoff'])
+    })
+  }
 })
 
 describe('hand-off flow', () => {

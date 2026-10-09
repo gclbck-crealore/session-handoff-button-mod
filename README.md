@@ -2,11 +2,13 @@
 
 A Claude Code **mod** that puts a **Session Hand-off** button directly above the prompt. The button shows how full the context window is and changes color as it fills:
 
-| Context used | Color |
-|---|---|
-| 0–44% | green |
-| 45–64% | orange |
-| 65%+ | red |
+| Context used | Color | Label |
+|---|---|---|
+| 0–44% | green | `Context clean` (not pressable) |
+| 45–64% | orange | `Session Hand-off` |
+| 65%+ | red | `Session Hand-off` |
+
+While the context is green there is nothing to hand off, so the band shows `● 30% Context clean` as plain text: no button, no hotkey.
 
 One press does the whole handoff routine: it writes a session handoff, copies it to the clipboard, runs `/clear`, and sends the handoff to the fresh session so work continues there.
 

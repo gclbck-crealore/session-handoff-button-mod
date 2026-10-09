@@ -1,11 +1,12 @@
 # session-handoff-button
 
-A **Session Hand-off** button above the prompt that shows how full the context window is (green under 45%, orange 45–64%, red from 65%). One press writes a session handoff, copies it to the clipboard, runs `/clear`, and sends the handoff to the fresh session.
+A **Session Hand-off** button above the prompt that shows how full the context window is (green under 45%, orange 45–64%, red from 65%). While green it reads `Context clean` and cannot be pressed; from orange on it reads `Session Hand-off` and one press writes a session handoff, copies it to the clipboard, runs `/clear`, and sends the handoff to the fresh session.
 
 Built on Claude Code 2.1.295. Proven on 2.1.295 (stages: validate, load, test, install-smoke, isolation). Requires Claude Code 2.1.287 or later.
 
 ```
-[ ● 52% Session Hand-off ]      <- the band directly above the prompt
+● 30% Context clean            <- green: plain text, nothing to press
+[ ● 52% Session Hand-off ]      <- orange/red: the button
 > _
 ```
 
