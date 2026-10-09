@@ -1,0 +1,22 @@
+{
+  "name": "session-handoff-button",
+  "version": "0.1.0",
+  "description": "A Session Hand-off button above the prompt, colored by context usage: one press writes the handoff, copies it, runs /clear and sends it to the fresh session.",
+  "author": { "name": "gclbck" },
+  "license": "MIT",
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "skill": {
+      "type": "string",
+      "title": "Handoff skill",
+      "description": "Slash command that writes the handoff (without the slash). When it is not installed, the built-in handoff prompt is used.",
+      "default": "session-handoff"
+    },
+    "autoSend": {
+      "type": "boolean",
+      "title": "Send automatically",
+      "description": "After /clear, send the handoff to the fresh session. Off: put it in the prompt box and wait for Enter.",
+      "default": true
+    }
+  }
+}

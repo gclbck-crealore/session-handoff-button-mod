@@ -1,0 +1,4 @@
+{
+  "description": "session-handoff-button: ui.render{AbovePrompt}, session.start, session.measure, turn.start, turn.complete",
+  "modules": ["./register.tsx"]
+}

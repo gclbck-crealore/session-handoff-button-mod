@@ -1,0 +1,18 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "session-handoff-button-mod",
+  "description": "A Claude Code mod: a context-colored Session Hand-off button that writes a handoff, clears, and continues in a fresh session with one press.",
+  "owner": {
+    "name": "gclbck-crealore",
+    "url": "https://github.com/gclbck-crealore"
+  },
+  "plugins": [
+    {
+      "name": "session-handoff-button",
+      "source": "./session-handoff-button",
+      "description": "A Session Hand-off button above the prompt, green/orange/red by context usage (45% and 65% thresholds). One press runs your handoff skill (or a built-in prompt), copies the handoff, runs /clear and sends it to the fresh session. Reach L2: drives Claude (one handoff turn, /clear, one prompt); no processes, files or network.",
+      "category": "productivity",
+      "tags": ["mods", "context", "handoff", "session", "status"]
+    }
+  ]
+}
