@@ -36,6 +36,15 @@ Requires Claude Code 2.1.287 or later (mods). Built on 2.1.295, run live on 2.1.
 
 ## Install
 
+From the Crealore mods marketplace (it also carries [is-it-done-yet](https://github.com/gclbck-crealore/is-it-done-yet-mod)):
+
+```sh
+claude plugin marketplace add gclbck-crealore/gclbck-crealore-mods
+claude plugin install session-handoff-button@gclbck-crealore-mods
+```
+
+Or, from this repository alone:
+
 ```sh
 claude plugin marketplace add gclbck-crealore/session-handoff-button-mod
 claude plugin install session-handoff-button@session-handoff-button-mod
@@ -43,21 +52,15 @@ claude plugin install session-handoff-button@session-handoff-button-mod
 
 Then run `/reload-plugins` in an open session, or start a new one.
 
+To update later, one command (use `@session-handoff-button-mod` instead if you installed from this repository alone), then `/reload-plugins` or a new session:
+
+```sh
+claude plugin update session-handoff-button@gclbck-crealore-mods
+```
+
+If `update` reports nothing new after a release, reinstall instead: `claude plugin uninstall session-handoff-button@gclbck-crealore-mods`, then the install command above. Installed copies are cached by version.
+
 To try it for one session without installing, clone the repo and run `claude --plugin-dir ./session-handoff-button`.
-
-## Update
-
-```sh
-claude plugin marketplace update session-handoff-button-mod
-claude plugin update session-handoff-button@session-handoff-button-mod
-```
-
-Then restart Claude Code, or run `/reload-plugins` in an open session. Installed copies are cached by version, so if `update` reports nothing new after a release, reinstall instead:
-
-```sh
-claude plugin uninstall session-handoff-button@session-handoff-button-mod
-claude plugin install session-handoff-button@session-handoff-button-mod
-```
 
 ## How it works
 
@@ -94,7 +97,7 @@ Reach L2: it drives Claude (one handoff turn per press, `/clear`, one hidden row
 
 ## Uninstall
 
-`claude plugin uninstall session-handoff-button@session-handoff-button-mod`, or disable it in `/plugin`. The only thing it leaves behind is the handoff `.md` files in your temp folder, which the operating system clears on its own.
+`claude plugin uninstall session-handoff-button@gclbck-crealore-mods` (or `@session-handoff-button-mod` if you installed from this repository alone), or disable it in `/plugin`. The only thing it leaves behind is the handoff `.md` files in your temp folder, which the operating system clears on its own.
 
 ## License
 
