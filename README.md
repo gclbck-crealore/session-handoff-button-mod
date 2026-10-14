@@ -1,5 +1,23 @@
 # Session Hand-off button for Claude Code
 
+![Context fills up, the model gets dull, one button hands the work to a fresh session](assets/banner.png)
+
+> **Hand off at 45%. One button instead of five steps.**
+
+## Why
+
+Every token you use fills the context window, and as it fills the model gets duller: it loses the thread, repeats itself and misses details. Clearing the context brings the sharpness back, but it also wipes the memory of everything done so far, and you don't want the model to forget that.
+
+The fix is to hand the work over to a clean session once the context passes about **45%**. Normally that is five manual steps:
+
+```text
+/session-handoff  →  /copy  →  /clear  →  ctrl+v  →  enter
+```
+
+This mod replaces them with **one button**.
+
+## What it does
+
 A Claude Code **mod** that puts a **Session Hand-off** button directly above the prompt. The button shows how full the context window is and changes color as it fills:
 
 | Context used | Color | Label |
