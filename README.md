@@ -45,6 +45,20 @@ Then run `/reload-plugins` in an open session, or start a new one.
 
 To try it for one session without installing, clone the repo and run `claude --plugin-dir ./session-handoff-button`.
 
+## Update
+
+```sh
+claude plugin marketplace update session-handoff-button-mod
+claude plugin update session-handoff-button@session-handoff-button-mod
+```
+
+Then restart Claude Code, or run `/reload-plugins` in an open session. Installed copies are cached by version, so if `update` reports nothing new after a release, reinstall instead:
+
+```sh
+claude plugin uninstall session-handoff-button@session-handoff-button-mod
+claude plugin install session-handoff-button@session-handoff-button-mod
+```
+
 ## How it works
 
 1. **Press** the button (click it, or focus the band with `ctrl+x tab` and press `h`).
