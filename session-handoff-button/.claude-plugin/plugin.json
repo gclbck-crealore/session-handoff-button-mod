@@ -1,8 +1,10 @@
 {
   "name": "session-handoff-button",
-  "version": "0.2.0",
-  "description": "A Session Hand-off button above the prompt, colored by context usage; reads Context clean and cannot be pressed while green. From orange on, one press writes the handoff, copies it, runs /clear and sends it to the fresh session.",
-  "author": { "name": "gclbck" },
+  "version": "1.0.0",
+  "description": "A Session Hand-off button above the prompt, colored by context usage; reads Context clean and cannot be pressed while green. From orange on, one press writes the handoff, saves it to a temp .md, clears the session and continues in the fresh one with a short message while the handoff goes in as hidden context. Past 65% it stops your next prompt once and recommends the button.",
+  "author": {
+    "name": "gclbck"
+  },
   "license": "MIT",
   "types": "./types/index.d.ts",
   "userConfig": {
@@ -15,7 +17,7 @@
     "autoSend": {
       "type": "boolean",
       "title": "Send automatically",
-      "description": "After /clear, send the handoff to the fresh session. Off: put it in the prompt box and wait for Enter.",
+      "description": "After /clear, send the short continue message automatically. Off: put it in the prompt box and wait for Enter (the handoff is already in the fresh session).",
       "default": true
     }
   }

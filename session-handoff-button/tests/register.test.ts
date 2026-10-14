@@ -1,6 +1,6 @@
 import { describe, expect, mock, test } from 'claude-code/testing'
-import type { CommandInfo, On, SessionMeasureInput, TurnCompleteInput } from 'claude-code'
-import { CLEAN_LABEL, FALLBACK_PROMPT, GREEN, ORANGE, RED, colorFor } from '../hooks/register.tsx'
+import type { CommandInfo, On, PromptSubmitInput, SessionMeasureInput, TurnCompleteInput } from 'claude-code'
+import { CLEAN_LABEL, FALLBACK_PROMPT, GREEN, ORANGE, RED, colorFor, continueMessage, handoffContext } from '../hooks/register.tsx'
 
 const PLUGIN = 'session-handoff-button'
 const BAND = {
@@ -16,27 +16,53 @@ const measure = (value: number): SessionMeasureInput => ({
 })
 type Ending = { answer?: string; isAborted?: boolean; turnId?: string; reason?: 'answer' | 'aborted' | 'error' }
 const finished = (over: Ending): TurnCompleteInput => ({
-  answer: over.answer ?? '# Session Handoff\nNext: run the tests.',
+  answer: over.answer ?? HANDOFF,
   durationMs: 1000,
   isAborted: over.isAborted ?? false,
   turnId: over.turnId ?? 't-handoff',
   reason: over.reason ?? 'answer',
 })
+const HANDOFF = '# Session Handoff\nNext: run the tests.'
+const typed = (text: string, kind: 'composer' | 'plugin' = 'composer'): PromptSubmitInput => ({
+  text,
+  wait: false,
+  origin: kind === 'composer' ? { kind: 'composer' } : { kind: 'plugin', name: 'other' },
+})
 const skillCommand: CommandInfo = { name: 'session-handoff', description: 'handoff', source: 'user' }
 
-type Calls = { commands: string[]; submits: { text: string; asUser?: true }[]; fills: string[]; copies: string[]; toasts: string[] }
+type Submit = { text: string; asUser?: true }
+type Calls = {
+  commands: string[]; submits: Submit[]; fills: string[]; appends: string[]; writes: { path: string; text: string }[]
+  toasts: string[]; order: string[]
+}
 
-function stubEngine(on: On, listed: CommandInfo[]): Calls {
-  const calls: Calls = { commands: [], submits: [], fills: [], copies: [], toasts: [] }
+function stubEngine(on: On, listed: CommandInfo[], options: { writeFails?: boolean; appendFails?: boolean } = {}): Calls {
+  const calls: Calls = { commands: [], submits: [], fills: [], appends: [], writes: [], toasts: [], order: [] }
   on('ui.render', () => ({ type: 'Text', props: {}, children: ['beneath'] }))
   on('session.measure', ($, e) => ({ changed: e.changed }))
   on('turn.start', ($, e) => ({ turnId: e.turnId }))
   on('turn.complete', ($, e) => ({ text: e.answer }))
   on('command.list', () => ({ value: listed }))
-  on('command.run', ($, e) => { calls.commands.push(e.command); return {} })
-  on('prompt.submit', ($, e) => { calls.submits.push({ text: e.text, asUser: e.origin.kind === 'plugin' ? e.origin.asUser : undefined }); return { text: e.text } })
-  on('prompt.fill', ($, e) => { calls.fills.push(e.text); return { isFilled: true } })
-  on('ui.copy', ($, e) => { calls.copies.push(e.text); return { value: { isCopied: true } } })
+  on('command.run', ($, e) => { calls.commands.push(e.command); calls.order.push(e.command); return {} })
+  on('prompt.submit', ($, e) => {
+    calls.submits.push({ text: e.text, asUser: e.origin.kind === 'plugin' ? e.origin.asUser : undefined })
+    calls.order.push('submit')
+    return { text: e.text }
+  })
+  on('session.append', ($, e, next) => {
+    if (options.appendFails) return { deny: 'refused' }
+    calls.appends.push(e.message.content.map(b => (b.type === 'text' ? b.text : '')).join(''))
+    calls.order.push('append')
+    return next(e)
+  })
+  on('prompt.read', () => ({ value: { text: '', cursor: 0 } }))
+  on('env.get', ($, e) => ({ value: e.name === 'TMPDIR' ? '/tmp/test/' : undefined }))
+  on('fs.write', ($, e) => {
+    if (options.writeFails) return { deny: 'read-only' }
+    calls.writes.push({ path: e.path, text: e.text })
+    return { value: undefined }
+  })
+  on('prompt.fill', ($, e) => { calls.fills.push(e.text); calls.order.push('fill'); return { isFilled: true } })
   on('ui.toast', ($, e) => { calls.toasts.push(e.text); return { value: undefined } })
   return calls
 }
@@ -89,7 +115,7 @@ describe('clean context', () => {
 })
 
 describe('hand-off flow', () => {
-  test('press runs the skill, then /clear, then sends the handoff as the person', async ($, on) => {
+  test('press runs the skill, saves the md, runs /clear, then adds the handoff as a hidden row and sends a short message', async ($, on) => {
     const clock = mock.clock(on)
     const calls = stubEngine(on, [skillCommand])
     const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
@@ -101,8 +127,43 @@ describe('hand-off flow', () => {
     await clock.advance(300)
     await clock.settle()
     expect(calls.commands).toEqual(['session-handoff', 'clear'])
-    expect(calls.copies).toEqual(['# Session Handoff\nNext: run the tests.'])
-    expect(calls.submits).toEqual([{ text: '# Session Handoff\nNext: run the tests.', asUser: true }])
+    expect(calls.writes).toHaveLength(1)
+    const { path, text } = calls.writes[0] ?? { path: '', text: '' }
+    expect(path).toMatch(/^\/tmp\/test\/session-handoff\/handoff-.+\.md$/)
+    expect(text).toBe(`${HANDOFF}\n`)
+    expect(calls.appends).toEqual([handoffContext(HANDOFF, path)])
+    expect(calls.submits).toEqual([{ text: continueMessage(path), asUser: true }])
+    expect(calls.submits[0]?.text).not.toContain('Next: run the tests.')
+    expect(calls.order).toEqual(['session-handoff', 'clear', 'append', 'submit'])
+  })
+
+  test('a handoff that cannot be written is still delivered, without a path', async ($, on) => {
+    const clock = mock.clock(on)
+    const calls = stubEngine(on, [skillCommand], { writeFails: true })
+    const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
+    await band.press({ key: 'session-handoff' })
+    await clock.settle()
+    await $.turn.start({ text: '', turnId: 't-handoff' })
+    await $.turn.complete(finished({}))
+    await clock.advance(300)
+    await clock.settle()
+    expect(calls.commands).toEqual(['session-handoff', 'clear'])
+    expect(calls.appends).toEqual([handoffContext(HANDOFF, null)])
+    expect(calls.submits).toEqual([{ text: continueMessage(null), asUser: true }])
+  })
+
+  test('if the hidden row is refused, the full handoff is sent as the message so nothing is lost', async ($, on) => {
+    const clock = mock.clock(on)
+    const calls = stubEngine(on, [skillCommand], { appendFails: true })
+    const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
+    await band.press({ key: 'session-handoff' })
+    await clock.settle()
+    await $.turn.start({ text: '', turnId: 't-handoff' })
+    await $.turn.complete(finished({}))
+    await clock.advance(300)
+    await clock.settle()
+    expect(calls.appends).toEqual([])
+    expect(calls.submits).toEqual([{ text: HANDOFF, asUser: true }])
   })
 
   test('without the skill it sends the built-in handoff prompt', async ($, on) => {
@@ -138,7 +199,7 @@ describe('hand-off flow', () => {
     expect(calls.commands).toEqual([])
   })
 
-  test('autoSend off puts the handoff in the prompt box instead of sending', { options: { autoSend: false } }, async ($, on) => {
+  test('autoSend off adds the hidden row and drafts the short message for Enter', { options: { autoSend: false } }, async ($, on) => {
     const clock = mock.clock(on)
     const calls = stubEngine(on, [skillCommand])
     const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
@@ -148,6 +209,54 @@ describe('hand-off flow', () => {
     await $.turn.complete(finished({}))
     await clock.advance(300)
     await clock.settle()
-    expect([calls.commands, calls.submits.length, calls.fills]).toEqual([['session-handoff', 'clear'], 0, ['# Session Handoff\nNext: run the tests.']])
+    const path = calls.writes[0]?.path ?? ''
+    expect(calls.submits).toEqual([])
+    expect(calls.order).toEqual(['session-handoff', 'clear', 'append', 'fill'])
+    expect(calls.fills).toEqual([continueMessage(path)])
+  })
+})
+
+describe('65% guard', () => {
+  test('stops the next prompt once with the warning, then lets it through', async ($, on) => {
+    const clock = mock.clock(on)
+    const calls = stubEngine(on, [skillCommand])
+    await $.session.measure(measure(70))
+    const first = await $.prompt.submit(typed('keep going'))
+    expect('drop' in first ? first.drop : '').toMatch(/70%.*Session Hand-off button/)
+    expect(calls.submits).toEqual([])
+    await clock.advance(200)
+    await clock.settle()
+    expect(calls.fills).toEqual(['keep going'])
+    await $.prompt.submit(typed('keep going'))
+    expect(calls.submits.map(s => s.text)).toEqual(['keep going'])
+  })
+
+  test('below 65% nothing is stopped', async ($, on) => {
+    const calls = stubEngine(on, [skillCommand])
+    await $.session.measure(measure(64))
+    await $.prompt.submit(typed('hello'))
+    expect(calls.submits.map(s => s.text)).toEqual(['hello'])
+  })
+
+  test('slash commands and plugin prompts are never stopped, and do not use up the warning', async ($, on) => {
+    const calls = stubEngine(on, [skillCommand])
+    await $.session.measure(measure(90))
+    await $.prompt.submit(typed('/compact'))
+    await $.prompt.submit(typed('from a plugin', 'plugin'))
+    expect(calls.submits.map(s => s.text)).toEqual(['/compact', 'from a plugin'])
+    const stopped = await $.prompt.submit(typed('now a real prompt'))
+    expect('drop' in stopped).toBe(true)
+  })
+
+  test('warns again after the context dropped below the mark and crossed it again', async ($, on) => {
+    mock.clock(on)
+    const calls = stubEngine(on, [skillCommand])
+    await $.session.measure(measure(70))
+    expect('drop' in (await $.prompt.submit(typed('one')))).toBe(true)
+    await $.prompt.submit(typed('two'))
+    await $.session.measure(measure(20))
+    await $.session.measure(measure(68))
+    expect('drop' in (await $.prompt.submit(typed('three')))).toBe(true)
+    expect(calls.submits.map(s => s.text)).toEqual(['two'])
   })
 })

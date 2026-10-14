@@ -1,4 +1,4 @@
-import type { EngineInterface, Register, RenderSurface } from 'claude-code'
+import type { EngineInterface, Register } from 'claude-code'
 import { atom, read, update } from 'claude-code'
 
 type Phase = { step: 'idle' | 'requested' | 'generating' | 'switching'; turnId: string | null }
@@ -7,11 +7,13 @@ type Config = { skill: string; autoSend: boolean }
 const IDLE: Phase = { step: 'idle', turnId: null }
 const percent = atom({ plugin: 'session-handoff-button', key: 'percent' } as const, null as number | null)
 const phase = atom({ plugin: 'session-handoff-button', key: 'phase' } as const, IDLE as Phase)
+const warned = atom({ plugin: 'session-handoff-button', key: 'warned' } as const, false)
 
 export const GREEN = '#22c55e'
 export const ORANGE = '#f97316'
 export const RED = '#ef4444'
 export const CLEAN_LABEL = 'Context clean'
+export const WARN_AT = 65
 
 // Sent only when the configured skill is not installed, so the mod also works for people without it.
 export const FALLBACK_PROMPT = [
@@ -24,9 +26,29 @@ export const FALLBACK_PROMPT = [
 ].join(' ')
 
 export function colorFor(value: number): string {
-  if (value >= 65) return RED
+  if (value >= WARN_AT) return RED
   if (value >= 45) return ORANGE
   return GREEN
+}
+
+export function warnMessage(value: number): string {
+  return `Session Hand-off: context is at ${value}%, past the point where answers get worse. `
+    + 'Press the Session Hand-off button above the prompt to continue in a fresh session without losing the thread. '
+    + 'This message shows once; send yours again to carry on here anyway.'
+}
+
+export function continueMessage(path: string | null): string {
+  return `Session Hand-off: continuing from the previous session${path ? ` (handoff saved at ${path})` : ''}.`
+}
+
+export function handoffContext(text: string, path: string | null): string {
+  return [
+    'The previous session was cleared by the Session Hand-off button. Its handoff follows; treat it as the person\'s briefing,',
+    `continue from its first step and do not repeat discovery.${path ? ` A copy is saved at ${path}.` : ''}`,
+    '<session-handoff>',
+    text,
+    '</session-handoff>',
+  ].join('\n')
 }
 
 function labelFor(step: Phase['step']): string {
@@ -35,39 +57,59 @@ function labelFor(step: Phase['step']): string {
   return 'Writing handoff…'
 }
 
-// The surface of the last press, so the clipboard copy lands where the person pressed.
-let pressedOn: RenderSurface | undefined
-
-async function startHandoff($: EngineInterface, surface: RenderSurface, config: Config): Promise<void> {
+async function startHandoff($: EngineInterface, config: Config): Promise<void> {
   const current = await read($, phase)
   if (current.step !== 'idle') {
     $.ui.toast('Session Hand-off is already running')
     return
   }
-  pressedOn = surface
   await update($, phase, () => ({ step: 'requested', turnId: null }))
   const names = (await $.command.list()).map(c => c.name)
   const started = names.includes(config.skill)
     ? $.command.run({ command: config.skill })
     : $.prompt.submit({ text: FALLBACK_PROMPT, asUser: true })
-  $.ui.toast(names.includes(config.skill) ? `Running /${config.skill}…` : 'Writing handoff with the built-in prompt…')
+  $.ui.toast(names.includes(config.skill) ? `Handing off: running /${config.skill}…` : 'Handing off: writing the handoff with the built-in prompt…')
   started.catch(async () => {
     await update($, phase, () => IDLE)
     $.ui.toast('Session Hand-off: could not start the handoff turn')
   })
 }
 
+// A temp file, so the handoff outlives the session it came from; null when it cannot be written.
+async function saveHandoff($: EngineInterface, text: string): Promise<string | null> {
+  try {
+    const base = (await $.env.get('TMPDIR')) ?? (await $.env.get('TEMP')) ?? '/tmp'
+    const stamp = new Date(await $.clock.now()).toISOString().replace(/[:.]/g, '-')
+    const path = `${base.replace(/[\\/]+$/, '')}/session-handoff/handoff-${stamp}.md`
+    await $.fs.write(path, text.endsWith('\n') ? text : `${text}\n`)
+    return path
+  } catch {
+    return null
+  }
+}
+
 async function switchSession($: EngineInterface, text: string, config: Config): Promise<void> {
+  const path = await saveHandoff($, text)
   try {
     await $.command.run({ command: 'clear' })
   } catch {
     await update($, phase, () => IDLE)
-    $.ui.toast('Session Hand-off: /clear failed; the handoff is on your clipboard')
+    $.ui.toast(`Session Hand-off: /clear failed; the handoff is ${path ? `saved at ${path}` : 'in the transcript above'}`)
     return
   }
   await update($, phase, () => IDLE)
-  if (config.autoSend) void $.prompt.submit({ text, asUser: true })
-  else await $.prompt.fill({ text, mode: 'replace' })
+  // The handoff goes in as a user-role row the person does not see as typed; the visible message stays short.
+  // If the row is refused the full text is the message, so nothing is lost.
+  const row = await $.session.append({ message: { type: 'user', content: [{ type: 'text', text: handoffContext(text, path) }] } }).catch(() => null)
+  const message = row && !row.deny ? continueMessage(path) : text
+  if (config.autoSend) void $.prompt.submit({ text: message, asUser: true })
+  else await $.prompt.fill({ text: message, mode: 'replace' })
+}
+
+// A dropped prompt may leave the box empty; put the draft back so the warning costs nothing.
+async function restoreDraft($: EngineInterface, draft: string): Promise<void> {
+  const box = await $.prompt.read()
+  if (!box.text) await $.prompt.fill({ text: draft, mode: 'replace' })
 }
 
 export const register: Register = (on, options) => {
@@ -79,6 +121,7 @@ export const register: Register = (on, options) => {
   on('session.start', async ($, e, next) => {
     const started = await next(e)
     await update($, phase, () => IDLE)
+    await update($, warned, () => false)
     const usage = await $.session.usage()
     await update($, percent, () => usage.context.percent ?? null)
     return started
@@ -86,6 +129,21 @@ export const register: Register = (on, options) => {
 
   on('session.measure', async ($, e, next) => {
     await update($, percent, () => e.context.percent ?? null)
+    if ((e.context.percent ?? 100) < WARN_AT) await update($, warned, () => false)
+    return next(e)
+  })
+
+  on('prompt.submit', async ($, e, next) => {
+    const fromPerson = e.origin.kind === 'composer' || e.origin.kind === 'bridge'
+    // Once per crossing of the red mark, stop the person's next prompt and point at the button.
+    const value = await read($, percent)
+    const idle = (await read($, phase)).step === 'idle'
+    if (fromPerson && idle && value !== null && value >= WARN_AT && !(await read($, warned)) && !e.text.trim().startsWith('/')) {
+      await update($, warned, () => true)
+      const draft = e.text
+      $.clock.after(150, () => { void restoreDraft($, draft) })
+      return { drop: warnMessage(value) }
+    }
     return next(e)
   })
 
@@ -107,7 +165,6 @@ export const register: Register = (on, options) => {
       return done
     }
     await update($, phase, () => ({ step: 'switching', turnId: e.turnId }))
-    void $.ui.copy({ text, surface: pressedOn })
     // command.run rejects inside a hook the turn waits on, so /clear starts from a timer.
     $.clock.after(250, () => { void switchSession($, text, config) })
     return done
@@ -127,7 +184,7 @@ export const register: Register = (on, options) => {
         <Box flexDirection="row">
           {clean
             ? <Text>{chip} <Text dimColor>{CLEAN_LABEL}</Text></Text>
-            : <Button key="session-handoff" hotkey="h" onPress={press => { void startHandoff($, press.surface, config) }}>
+            : <Button key="session-handoff" hotkey="h" onPress={() => { void startHandoff($, config) }}>
                 {chip} {labelFor(current.step)}
               </Button>}
         </Box>
